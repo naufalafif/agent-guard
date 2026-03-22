@@ -120,10 +120,16 @@ struct PopoverView: View {
             let muted = state.skillFindings.filter { $0.isIgnored }
 
             if !state.skillScannerInstalled {
-                NotInstalledBanner(
-                    name: "skill-scanner",
-                    command: "uv tool install cisco-ai-skill-scanner"
-                )
+                // skill-scanner not available — show quietly, brew install handles this
+                HStack(spacing: 4) {
+                    Image(systemName: "minus.circle")
+                        .font(.system(size: 9))
+                    Text("Not active")
+                }
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
             } else if active.isEmpty && state.skillCount > 0 {
                 safeStatus("No findings")
             }
