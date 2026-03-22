@@ -120,14 +120,10 @@ struct PopoverView: View {
             let muted = state.skillFindings.filter { $0.isIgnored }
 
             if !state.skillScannerInstalled {
-                HStack(spacing: 4) {
-                    Image(systemName: "info.circle")
-                    Text("Install: uv tool install cisco-ai-skill-scanner")
-                }
-                .font(.system(size: 10))
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
+                NotInstalledBanner(
+                    name: "skill-scanner",
+                    command: "uv tool install cisco-ai-skill-scanner"
+                )
             } else if active.isEmpty && state.skillCount > 0 {
                 safeStatus("No findings")
             }
@@ -270,7 +266,7 @@ struct PopoverView: View {
     }
 
     private var skillSubtitle: String {
-        if !state.skillScannerInstalled { return "not installed" }
+        if !state.skillScannerInstalled { return "not active" }
         if state.skillCount == 0 { return "no dirs found" }
         return "\(state.skillCount) skills"
     }

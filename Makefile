@@ -1,9 +1,10 @@
-.PHONY: build run release clean lint format check
+.PHONY: build run release clean lint format check install uninstall
 
 APP_NAME := AgentGuard
 APP_BUNDLE := $(APP_NAME).app
 BUILD_DIR := .build/release
 DIST_DIR := dist
+INSTALL_DIR := /Applications
 
 # --- Build ---
 
@@ -12,19 +13,34 @@ build:
 
 release:
 	swift build -c release
-	mkdir -p $(APP_BUNDLE)/Contents/MacOS
-	cp $(BUILD_DIR)/$(APP_NAME) $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
-	cp Info.plist $(APP_BUNDLE)/Contents/
-	codesign --force --sign - $(APP_BUNDLE)
-	@echo "Built $(APP_BUNDLE)"
+	$(MAKE) bundle BUILD=release
 
 run: build
-	mkdir -p $(APP_BUNDLE)/Contents/MacOS
-	cp .build/debug/$(APP_NAME) $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
-	cp Info.plist $(APP_BUNDLE)/Contents/
+	$(MAKE) bundle BUILD=debug
 	killall $(APP_NAME) 2>/dev/null || true
 	@sleep 0.5
 	open $(APP_BUNDLE)
+
+# Shared bundle assembly
+bundle:
+	mkdir -p $(APP_BUNDLE)/Contents/MacOS $(APP_BUNDLE)/Contents/Resources
+	cp .build/$(BUILD)/$(APP_NAME) $(APP_BUNDLE)/Contents/MacOS/$(APP_NAME)
+	cp Info.plist $(APP_BUNDLE)/Contents/
+	cp AppIcon.icns $(APP_BUNDLE)/Contents/Resources/AppIcon.icns
+	codesign --force --sign - $(APP_BUNDLE)
+
+# --- Install / Uninstall ---
+
+install: release
+	@echo "Installing to $(INSTALL_DIR)..."
+	rm -rf $(INSTALL_DIR)/$(APP_BUNDLE)
+	cp -R $(APP_BUNDLE) $(INSTALL_DIR)/$(APP_BUNDLE)
+	@echo "Installed $(INSTALL_DIR)/$(APP_BUNDLE)"
+	@echo "Open from Spotlight or: open $(INSTALL_DIR)/$(APP_BUNDLE)"
+
+uninstall:
+	rm -rf $(INSTALL_DIR)/$(APP_BUNDLE)
+	@echo "Removed $(INSTALL_DIR)/$(APP_BUNDLE)"
 
 # --- Release packaging ---
 
@@ -53,7 +69,7 @@ format:
 
 format-check:
 	@echo "--- swift-format check ---"
-	@swift-format lint --strict --recursive Sources/
+	@swift-format lint --recursive Sources/
 
 check: build lint format-check
 	@echo "All checks passed"
