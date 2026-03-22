@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build & Test
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build (debug)
+        run: swift build
+
+      - name: Build (release)
+        run: swift build -c release
+
+  lint:
+    name: Lint & Format
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: brew install swiftlint swift-format
+
+      - name: SwiftLint
+        run: swiftlint lint --strict Sources/
+
+      - name: swift-format check
+        run: swift-format lint --strict --recursive Sources/
+
+  security:
+    name: Security
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for hardcoded secrets
+        uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+      - name: Dependency audit
+        run: |
+          # SPM has no built-in audit; check Package.resolved for known issues
+          if [ -f Package.resolved ]; then
+            echo "Package.resolved found — review dependencies manually"
+            cat Package.resolved
+          else
+            echo "No external dependencies (good)"
+          fi

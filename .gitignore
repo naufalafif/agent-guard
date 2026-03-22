@@ -1,0 +1,18 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Package.resolved
+
+# App bundle (built artifact)
+AgentGuard.app/
+
+# macOS
+.DS_Store
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+
+# Release artifacts
+dist/
+*.zip
+*.dmg
