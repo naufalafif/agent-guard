@@ -53,6 +53,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: NSWindow?
     private let state = ScanState()
     private let scanner = ScannerService()
+    private let deps = DependencyManager()
     private var scanTimer: Timer?
     private var currentScanInterval: TimeInterval = 300
 
@@ -91,8 +92,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         setupPopoverContent()
 
+        // Ensure dependencies (uv, mcp-scanner, skill-scanner) then scan
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
+                await self?.deps.ensureDependencies()
                 await self?.performScan()
             }
         }
