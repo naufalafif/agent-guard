@@ -9,10 +9,13 @@ disabled_rules:
   - file_length
 
 opt_in_rules:
-  - empty_count
   - force_unwrapping
   - closure_spacing
 
 line_length:
   warning: 140
   error: 200
+
+cyclomatic_complexity:
+  warning: 15
+  error: 20
