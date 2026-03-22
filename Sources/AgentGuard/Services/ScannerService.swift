@@ -240,7 +240,7 @@ actor ScannerService {
 
                     var details = threats
                     if let desc = tool["tool_description"] as? String, !desc.isEmpty {
-                        details.append(String(desc.prefix(80)))
+                        details.append(desc)
                     }
 
                     findings.append(Finding(

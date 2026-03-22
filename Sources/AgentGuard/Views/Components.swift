@@ -78,11 +78,16 @@ struct FindingRowView: View {
             // Expanded detail
             if isExpanded {
                 VStack(alignment: .leading, spacing: 4) {
+                    // Full name (unwrapped)
+                    Text(finding.name)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .textSelection(.enabled)
+
                     ForEach(finding.details, id: \.self) { detail in
                         Text(detail)
                             .font(.system(size: 10))
                             .foregroundStyle(.secondary)
-                            .lineLimit(2)
                             .textSelection(.enabled)
                     }
 
