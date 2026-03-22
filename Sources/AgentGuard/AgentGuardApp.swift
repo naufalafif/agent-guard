@@ -39,7 +39,6 @@ struct MenuBarIconView: View {
 
 class ClickThroughHostingView<Content: View>: NSHostingView<Content> {
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Return nil so the parent NSStatusBarButton receives the click
         return nil
     }
 }
@@ -51,6 +50,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var statusView: ClickThroughHostingView<MenuBarIconView>?
+    private var settingsWindow: NSWindow?
     private let state = ScanState()
     private let scanner = ScannerService()
     private var scanTimer: Timer?
@@ -62,15 +62,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // When user opens the app again (Spotlight, Finder, Dock) — show Settings
+    nonisolated func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        Task { @MainActor in
+            self.showSettings()
+        }
+        return false
+    }
+
     private func setup() {
-        // Start with enough space, will resize dynamically
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
             button.action = #selector(togglePopover)
             button.target = self
 
-            // Embed SwiftUI view as subview (like Stats/eul)
             let hostingView = ClickThroughHostingView(rootView: MenuBarIconView(count: 0, isScanning: true))
             hostingView.frame = NSRect(x: 0, y: 0, width: 24, height: 22)
             button.addSubview(hostingView)
@@ -85,14 +91,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         setupPopoverContent()
 
-        // Initial scan
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.performScan()
             }
         }
 
-        // Periodic scan
         scanTimer = Timer.scheduledTimer(withTimeInterval: currentScanInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.performScan()
@@ -105,12 +109,49 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(nil)
         } else {
-            // Activate app first so the popover window can become key
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-            // Ensure the popover window accepts clicks
             popover.contentViewController?.view.window?.makeKey()
             popover.contentViewController?.view.window?.makeFirstResponder(popover.contentViewController?.view)
+        }
+    }
+
+    func showSettings() {
+        // Close popover if open
+        if popover.isShown { popover.performClose(nil) }
+
+        // Reuse existing window or create new one
+        if let window = settingsWindow {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let settingsView = SettingsView()
+        let hostingController = NSHostingController(rootView: settingsView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "AgentGuard Settings"
+        window.styleMask = [.titled, .closable]
+        window.center()
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+
+        // Show in Dock while settings is open, hide when closed
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        settingsWindow = window
+
+        // Watch for window close to hide from Dock again
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification,
+            object: window,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.settingsWindow = nil
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
     }
 
@@ -134,6 +175,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     await self?.refreshIgnoreState()
                 }
             },
+            onSettings: { [weak self] in
+                self?.showSettings()
+            },
             onQuit: {
                 NSApplication.shared.terminate(nil)
             }
@@ -142,7 +186,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func performScan() async {
-        // Fix #1: Prevent concurrent scans
         guard !state.isScanning else { return }
 
         state.isScanning = true
@@ -150,7 +193,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let result = await scanner.runFullScan()
 
-        // Fix #5: Simplified assignments using structured results
         state.lastScanDate = result.scanDate
         state.mcpResult = result.mcp
         state.skillResult = result.skill
@@ -161,7 +203,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
         state.isScanning = false
 
-        // Fix #3: Reschedule timer if config interval changed
         let newInterval = TimeInterval(result.scanInterval * 60)
         if newInterval != currentScanInterval {
             currentScanInterval = newInterval
@@ -176,7 +217,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateMenuBarIcon()
     }
 
-    // Fix #11: Removed redundant MainActor.run since class is already @MainActor
     private func refreshIgnoreState() async {
         let ignored = await scanner.loadIgnoreList()
         var mcpFindings = state.mcpFindings
@@ -199,7 +239,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let iconView = MenuBarIconView(count: count, isScanning: state.isScanning)
         statusView?.rootView = iconView
 
-        // Resize to fit content
         let width = max(24, (statusView?.fittingSize.width ?? 24) + 8)
         statusView?.frame = NSRect(x: 0, y: 0, width: width, height: 22)
         statusItem.button?.frame = statusView?.frame ?? NSRect(x: 0, y: 0, width: width, height: 22)

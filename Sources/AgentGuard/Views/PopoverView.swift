@@ -7,6 +7,7 @@ struct PopoverView: View {
     let onScanNow: () -> Void
     let onIgnore: (String) -> Void
     let onRestore: (String) -> Void
+    let onSettings: () -> Void
     let onQuit: () -> Void
 
     var body: some View {
@@ -183,6 +184,15 @@ struct PopoverView: View {
                     .font(.system(size: 9))
                     .foregroundStyle(.quaternary)
             }
+
+            Button { onSettings() } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .pointerCursor()
+            .help("Settings")
 
             Button { onQuit() } label: {
                 Image(systemName: "xmark.circle")
