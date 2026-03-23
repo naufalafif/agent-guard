@@ -61,6 +61,31 @@ make clean          # Remove build artifacts
 
 Do NOT run `swift run` — the app needs a `.app` bundle with `Info.plist` and `AppIcon.icns` to show the menu bar icon. Always use `make run`.
 
+## Git Workflow
+
+Uses gitflow:
+
+```
+feat/my-feature  →  staging  →  main  →  tag  →  release
+```
+
+- **`staging`** — default branch, all PRs target here
+- **`main`** — production-ready, releases come from here
+- **Feature/fix branches** — branch from `staging`, PR back to `staging`
+- **Release** — merge `staging` → `main`, then tag on `main`
+
+```bash
+# New feature
+git checkout staging
+git checkout -b feat/my-feature
+# ... make changes ...
+git push -u origin feat/my-feature
+gh pr create --base staging
+
+# Release (after PR merged to staging, then staging merged to main)
+./scripts/release.sh 1.4.0
+```
+
 ## Releasing
 
 Two options:
@@ -68,20 +93,20 @@ Two options:
 **Option 1: Local script (does everything)**
 
 ```bash
-./scripts/release.sh 1.3.0
+./scripts/release.sh 1.4.0
 ```
 
 Automates: version bump in Info.plist → commit → tag → push → wait for CI → update homebrew-tap.
 
-**Option 2: Just tag (CI handles the rest)**
+**Option 2: Just tag on main (CI handles the rest)**
 
 ```bash
-# Update Info.plist version first, commit, then:
-git tag v1.3.0
-git push origin v1.3.0
+# On main branch, after merging staging:
+git tag v1.4.0
+git push origin v1.4.0
 ```
 
-The release workflow builds the `.app`, creates a GitHub Release, and **automatically updates the Homebrew tap** (`naufalafif/homebrew-tap`) with the new version and SHA. Requires `TAP_TOKEN` secret with push access to the tap repo.
+The release workflow builds the `.app`, creates a GitHub Release, and **automatically updates the Homebrew tap** (`naufalafif/homebrew-tap`) with the new version and SHA via `TAP_TOKEN` secret.
 
 **Important:** Never retag the same version — always bump the version number so `brew upgrade` works.
 
