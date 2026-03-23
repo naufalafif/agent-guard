@@ -5,8 +5,7 @@ Native macOS menu bar app that monitors your AI development environment for secu
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black?style=flat-square) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square) ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 <p align="center">
-  <img src="screenshot.png" width="420" alt="AgentGuard popover" />
-  <img src="screenshot-config.png" width="420" alt="AgentGuard with settings" />
+  <img src="screenshot.png" width="600" alt="AgentGuard" />
 </p>
 
 ## What it does
