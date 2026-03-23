@@ -33,7 +33,7 @@ Click the icon to see findings grouped by scanner, expand details, mute/unmute i
 
 ```bash
 brew tap naufalafif/tap
-brew install agent-guard
+brew install --cask agent-guard
 open /Applications/AgentGuard.app
 ```
 
@@ -192,7 +192,7 @@ git push origin v1.2.0
 
 ```bash
 # If installed via Homebrew
-brew uninstall agent-guard
+brew uninstall --cask agent-guard
 
 # If installed via make
 make uninstall
