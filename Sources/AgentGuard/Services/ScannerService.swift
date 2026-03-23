@@ -34,32 +34,36 @@ actor ScannerService {
     // MARK: - Shell helpers
 
     private func shell(_ command: String, timeout: TimeInterval = 120) async throws -> String {
+        // Write output to a temp file to avoid pipe deadlocks in .app bundles
+        let tmpFile = cacheDir.appendingPathComponent("shell-\(UUID().uuidString).tmp")
+        let fullCommand = "\(command) > '\(tmpFile.path)' 2>/dev/null"
+
         let process = Process()
-        let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-lc", command]
-        process.standardOutput = pipe
+        process.arguments = ["-lc", fullCommand]
+        process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
-        process.environment = ProcessInfo.processInfo.environment
 
         try process.run()
 
-        // Schedule a timeout to terminate the process if it runs too long
-        let timeoutWork = DispatchWorkItem { [weak process] in
-            guard let process = process, process.isRunning else { return }
-            process.terminate()
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
-
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                timeoutWork.cancel()
-                let output = String(data: data, encoding: .utf8) ?? ""
-                continuation.resume(returning: output)
+        // Run blocking wait on a detached task to avoid blocking the actor
+        let result: String = await Task.detached {
+            // Timeout: kill process if it takes too long
+            let deadline = Date().addingTimeInterval(timeout)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.1)
             }
-        }
+            if process.isRunning {
+                process.terminate()
+                process.waitUntilExit()
+            }
+
+            let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
+            try? FileManager.default.removeItem(at: tmpFile)
+            return output
+        }.value
+
+        return result
     }
 
     private func commandExists(_ cmd: String) async -> Bool {

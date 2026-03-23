@@ -54,7 +54,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let state = ScanState()
     private let scanner = ScannerService()
     private let deps = DependencyManager()
-    private var scanTimer: Timer?
     private var currentScanInterval: TimeInterval = 300
 
     nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
@@ -92,18 +91,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.animates = true
         setupPopoverContent()
 
-        // Ensure dependencies (uv, mcp-scanner, skill-scanner) then scan
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.deps.ensureDependencies()
-                await self?.performScan()
-            }
-        }
-
-        scanTimer = Timer.scheduledTimer(withTimeInterval: currentScanInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                await self?.performScan()
-            }
+        // Ensure dependencies then scan, all async
+        Task { [weak self] in
+            await self?.deps.ensureDependencies()
+            await self?.performScan()
+            await self?.startPeriodicScan()
         }
     }
 
@@ -116,6 +108,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             popover.contentViewController?.view.window?.makeFirstResponder(popover.contentViewController?.view)
+
+            // Auto-screenshot popover for UI validation (debug builds only)
+            #if DEBUG
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+                guard let self else { return }
+                if let url = ScreenshotValidator.capturePopover(self.popover, label: "popover") {
+                    self.debugLog("Screenshot saved: \(url.path)")
+                }
+            }
+            #endif
         }
     }
 
@@ -123,10 +125,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Close popover if open
         if popover.isShown { popover.performClose(nil) }
 
+        // Show in Dock and activate BEFORE showing window
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
         // Reuse existing window or create new one
         if let window = settingsWindow {
             window.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            window.orderFrontRegardless()
             return
         }
 
@@ -137,11 +143,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         window.styleMask = [.titled, .closable]
         window.center()
         window.isReleasedWhenClosed = false
+        window.level = .floating  // Ensure it appears above other windows initially
         window.makeKeyAndOrderFront(nil)
+        window.orderFrontRegardless()
 
-        // Show in Dock while settings is open, hide when closed
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
+        // Reset window level after it's visible so it behaves normally
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            window.level = .normal
+        }
 
         settingsWindow = window
 
@@ -189,13 +198,36 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentViewController = NSHostingController(rootView: view)
     }
 
+    private func startPeriodicScan() {
+        Task { [weak self] in
+            while let self {
+                try? await Task.sleep(nanoseconds: UInt64(self.currentScanInterval) * 1_000_000_000)
+                await self.performScan()
+            }
+        }
+    }
+
     private func performScan() async {
         guard !state.isScanning else { return }
+
+        let logFile = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/mcp-scan/agentguard.log")
 
         state.isScanning = true
         updateMenuBarIcon()
 
+        try? "[\(Date())] Scan starting...\n".write(to: logFile, atomically: true, encoding: .utf8)
+
         let result = await scanner.runFullScan()
+
+        let log = """
+        [\(Date())] Scan complete:
+          MCP: \(result.mcp.configCount) configs, \(result.mcp.toolCount) tools, \(result.mcp.serverCount) servers, \(result.mcp.findings.count) findings
+          Skills: \(result.skill.skillCount) skills, \(result.skill.findings.count) findings, \(result.skill.safeSkills.count) safe
+          Scanners: mcp=\(result.mcpScannerVersion) skill=\(result.skillScannerVersion) installed=\(result.skillScannerInstalled)
+          Interval: \(result.scanInterval)m\n
+        """
+        try? log.write(to: logFile, atomically: true, encoding: .utf8)
 
         state.lastScanDate = result.scanDate
         state.mcpResult = result.mcp
@@ -206,17 +238,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             skillScannerInstalled: result.skillScannerInstalled
         )
         state.isScanning = false
-
-        let newInterval = TimeInterval(result.scanInterval * 60)
-        if newInterval != currentScanInterval {
-            currentScanInterval = newInterval
-            scanTimer?.invalidate()
-            scanTimer = Timer.scheduledTimer(withTimeInterval: currentScanInterval, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    await self?.performScan()
-                }
-            }
-        }
+        currentScanInterval = TimeInterval(result.scanInterval * 60)
 
         updateMenuBarIcon()
     }
@@ -248,4 +270,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.button?.frame = statusView?.frame ?? NSRect(x: 0, y: 0, width: width, height: 22)
         statusItem.length = width
     }
+
+    #if DEBUG
+    private func debugLog(_ msg: String) {
+        let logFile = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".cache/mcp-scan/agentguard.log")
+        let line = "[\(Date())] [debug] \(msg)\n"
+        if let data = line.data(using: .utf8),
+           let handle = try? FileHandle(forWritingTo: logFile) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        }
+    }
+    #endif
 }
