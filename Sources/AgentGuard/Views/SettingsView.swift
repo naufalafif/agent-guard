@@ -68,15 +68,20 @@ struct SettingsView: View {
                     LabeledContent("Version", value: "1.0.0")
                     LabeledContent("Scanners") {
                         VStack(alignment: .trailing, spacing: 2) {
-                            Link("mcp-scanner (Cisco)", destination: URL(string: "https://github.com/cisco-ai-defense/mcp-scanner")!)
-                            Link("skill-scanner (Cisco)", destination: URL(string: "https://github.com/cisco-ai-defense/skill-scanner")!)
+                            if let url = URL(string: "https://github.com/cisco-ai-defense/mcp-scanner") {
+                                Link("mcp-scanner (Cisco)", destination: url)
+                            }
+                            if let url = URL(string: "https://github.com/cisco-ai-defense/skill-scanner") {
+                                Link("skill-scanner (Cisco)", destination: url)
+                            }
                         }
                         .font(.system(size: 11))
                     }
                     LabeledContent("Source") {
-                        Link("github.com/naufalafif/agent-guard",
-                             destination: URL(string: "https://github.com/naufalafif/agent-guard")!)
-                            .font(.system(size: 11))
+                        if let url = URL(string: "https://github.com/naufalafif/agent-guard") {
+                            Link("github.com/naufalafif/agent-guard", destination: url)
+                                .font(.system(size: 11))
+                        }
                     }
                 }
             }

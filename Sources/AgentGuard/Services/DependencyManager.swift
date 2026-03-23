@@ -28,10 +28,8 @@ actor DependencyManager {
             "/usr/local/bin/\(name)",
             "/usr/bin/\(name)",
         ]
-        for path in commonPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
+        for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {
+            return path
         }
         // Fall back to /usr/bin/which
         let result = runProcessSync("/usr/bin/which", arguments: [name], timeout: 5)
@@ -123,7 +121,9 @@ actor DependencyManager {
                 log("Installing uv via brew...")
                 _ = await runProcess(brewPath, arguments: ["install", "uv"], timeout: 120)
             } else {
-                log("WARNING: uv not found and brew not available. Please install uv manually: https://docs.astral.sh/uv/getting-started/installation/")
+                log("WARNING: uv not found and brew not available. "
+                    + "Please install uv manually: "
+                    + "https://docs.astral.sh/uv/getting-started/installation/")
             }
         }
 
@@ -138,7 +138,8 @@ actor DependencyManager {
 
         if !hasMCP {
             log("Installing mcp-scanner...")
-            let result = await runProcess(uvPath, arguments: ["tool", "install", "--python", "3.13", "cisco-ai-mcp-scanner"], timeout: 120)
+            let mcpArgs = ["tool", "install", "--python", "3.13", "cisco-ai-mcp-scanner"]
+            let result = await runProcess(uvPath, arguments: mcpArgs, timeout: 120)
             if !result.success {
                 _ = await runProcess(uvPath, arguments: ["tool", "install", "cisco-ai-mcp-scanner"], timeout: 120)
             }
@@ -149,7 +150,8 @@ actor DependencyManager {
 
         if !hasSkill {
             log("Installing skill-scanner...")
-            let result = await runProcess(uvPath, arguments: ["tool", "install", "--python", "3.13", "cisco-ai-skill-scanner"], timeout: 120)
+            let skillArgs = ["tool", "install", "--python", "3.13", "cisco-ai-skill-scanner"]
+            let result = await runProcess(uvPath, arguments: skillArgs, timeout: 120)
             if !result.success {
                 _ = await runProcess(uvPath, arguments: ["tool", "install", "cisco-ai-skill-scanner"], timeout: 120)
             }

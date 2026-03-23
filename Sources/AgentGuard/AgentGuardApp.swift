@@ -229,20 +229,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         state.isScanning = true
         updateMenuBarIcon()
 
-        if let data = "[\(Date())] Scan starting...\n".data(using: .utf8),
-           let handle = try? FileHandle(forWritingTo: logFile) {
+        let startMsg = "[\(Date())] Scan starting...\n"
+        if let handle = try? FileHandle(forWritingTo: logFile) {
+            let data = Data(startMsg.utf8)
             handle.seekToEndOfFile()
             handle.write(data)
             handle.closeFile()
         } else {
-            try? "[\(Date())] Scan starting...\n".write(to: logFile, atomically: true, encoding: .utf8)
+            try? startMsg.write(to: logFile, atomically: true, encoding: .utf8)
         }
 
         let result = await scanner.runFullScan()
 
         let log = """
         [\(Date())] Scan complete:
-          MCP: \(result.mcp.configCount) configs, \(result.mcp.toolCount) tools, \(result.mcp.serverCount) servers, \(result.mcp.findings.count) findings
+          MCP: \(result.mcp.configCount) configs, \(result.mcp.toolCount) tools, \
+        \(result.mcp.serverCount) servers, \(result.mcp.findings.count) findings
           Skills: \(result.skill.skillCount) skills, \(result.skill.findings.count) findings, \(result.skill.safeSkills.count) safe
           Scanners: mcp=\(result.mcpScannerVersion) skill=\(result.skillScannerVersion) installed=\(result.skillScannerInstalled)
           Interval: \(result.scanInterval)m\n

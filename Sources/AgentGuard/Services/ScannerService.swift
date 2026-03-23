@@ -46,10 +46,8 @@ actor ScannerService {
             "/usr/local/bin/\(name)",
             "/usr/bin/\(name)",
         ]
-        for path in commonPaths {
-            if FileManager.default.isExecutableFile(atPath: path) {
-                return path
-            }
+        for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {
+            return path
         }
 
         // Fall back to /usr/bin/which
