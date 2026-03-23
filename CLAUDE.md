@@ -63,15 +63,27 @@ Do NOT run `swift run` — the app needs a `.app` bundle with `Info.plist` and `
 
 ## Releasing
 
-Use the release script:
+Two options:
+
+**Option 1: Local script (does everything)**
 
 ```bash
 ./scripts/release.sh 1.3.0
 ```
 
-This automates: version bump in Info.plist → commit → tag → push → wait for CI → get release asset SHA → update homebrew-tap → push tap.
+Automates: version bump in Info.plist → commit → tag → push → wait for CI → update homebrew-tap.
 
-Never retag the same version — always bump the version number so `brew upgrade` works.
+**Option 2: Just tag (CI handles the rest)**
+
+```bash
+# Update Info.plist version first, commit, then:
+git tag v1.3.0
+git push origin v1.3.0
+```
+
+The release workflow builds the `.app`, creates a GitHub Release, and **automatically updates the Homebrew tap** (`naufalafif/homebrew-tap`) with the new version and SHA. Requires `TAP_TOKEN` secret with push access to the tap repo.
+
+**Important:** Never retag the same version — always bump the version number so `brew upgrade` works.
 
 ## Key Technical Decisions
 
