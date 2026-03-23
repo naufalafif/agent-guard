@@ -61,6 +61,30 @@ make clean          # Remove build artifacts
 
 Do NOT run `swift run` — the app needs a `.app` bundle with `Info.plist` and `AppIcon.icns` to show the menu bar icon. Always use `make run`.
 
+## First-Time Setup
+
+After cloning, install git hooks:
+
+```bash
+./scripts/setup-hooks.sh
+```
+
+This installs a `pre-push` hook that runs `make check` (build + lint + format) before every push. Both humans and AI should always have this active.
+
+## PR Conventions
+
+PR titles must follow conventional commits:
+
+```
+feat: add new scanner support
+fix: resolve pipe deadlock in .app bundles
+chore: update CI workflow
+docs: improve README installation section
+refactor: extract scan logic into service
+```
+
+CI enforces this — PRs with non-conforming titles will fail.
+
 ## Git Workflow
 
 Uses gitflow:
