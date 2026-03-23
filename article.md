@@ -39,11 +39,11 @@ The scanners are solid. But they're CLI tools — you run them, read JSON output
 
 AgentGuard puts both scanners behind a menu bar icon. It scans on a schedule, shows findings in a popover, and lets you act on them.
 
-![AgentGuard popover showing findings](IMAGE_POPOVER_URL)
+![AgentGuard popover showing findings](screenshot-popover.png)
 
 Click a finding to see full details — what was detected, which rule flagged it, and the option to mute it:
 
-![Finding expanded with details](IMAGE_FINDING_DETAIL_URL)
+![Finding expanded with details](screenshot-detail.png)
 
 ### What you get
 
