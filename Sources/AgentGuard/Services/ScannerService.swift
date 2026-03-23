@@ -91,9 +91,13 @@ actor ScannerService {
             }
             if process.isRunning {
                 process.terminate()
-                process.waitUntilExit()
             }
+            process.waitUntilExit()
+            // Close file handle and flush to disk before reading
+            try? stdout.synchronizeFile()
             try? stdout.close()
+            // Small delay to ensure filesystem sync
+            Thread.sleep(forTimeInterval: 0.1)
             let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
             try? FileManager.default.removeItem(at: tmpFile)
             return output
