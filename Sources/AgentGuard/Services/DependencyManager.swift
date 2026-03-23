@@ -47,17 +47,17 @@ actor DependencyManager {
         // 2. Ensure mcp-scanner
         if !(await commandExists("mcp-scanner")) {
             // Try with Python 3.13 first, fall back to default
-            let result = await shell("uv tool install --python 3.13 cisco-ai-mcp-scanner 2>/dev/null")
+            let result = await shell("uv tool install --force --python 3.13 cisco-ai-mcp-scanner 2>/dev/null")
             if !result.success {
-                _ = await shell("uv tool install cisco-ai-mcp-scanner")
+                _ = await shell("uv tool install --force cisco-ai-mcp-scanner")
             }
         }
 
         // 3. Ensure skill-scanner
         if !(await commandExists("skill-scanner")) {
-            let result = await shell("uv tool install --python 3.13 cisco-ai-skill-scanner 2>/dev/null")
+            let result = await shell("uv tool install --force --python 3.13 cisco-ai-skill-scanner 2>/dev/null")
             if !result.success {
-                _ = await shell("uv tool install cisco-ai-skill-scanner")
+                _ = await shell("uv tool install --force cisco-ai-skill-scanner")
             }
         }
     }

@@ -6,7 +6,6 @@ class AgentGuard < Formula
   license "MIT"
 
   depends_on :macos
-  depends_on xcode: ["14.0", :build]
   depends_on "uv"
 
   def install
