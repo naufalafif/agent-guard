@@ -42,6 +42,8 @@ Powered by [Cisco AI Defense](https://github.com/cisco-ai-defense). YARA rules +
 - **Mute** false positives with confirmation, unmute anytime
 - **Settings** (gear icon) — scan interval, skill directories, launch at login
 
+> **Tip:** AgentGuard scans common skill locations (`~/.cursor/rules`, `~/.claude/skills`, etc.) by default. If you keep skills inside project directories, add your workspace path in Settings.
+
 ## Uninstall
 
 ```bash
