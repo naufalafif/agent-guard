@@ -131,8 +131,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Reuse existing window or create new one
         if let window = settingsWindow {
+            window.center()
             window.makeKeyAndOrderFront(nil)
-            window.orderFrontRegardless()
             return
         }
 
@@ -141,16 +141,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let window = NSWindow(contentViewController: hostingController)
         window.title = "AgentGuard Settings"
         window.styleMask = [.titled, .closable]
-        window.center()
         window.isReleasedWhenClosed = false
-        window.level = .floating  // Ensure it appears above other windows initially
-        window.makeKeyAndOrderFront(nil)
-        window.orderFrontRegardless()
 
-        // Reset window level after it's visible so it behaves normally
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            window.level = .normal
-        }
+        // Size the window first, then center it properly
+        window.setContentSize(NSSize(width: 420, height: 480))
+        window.center()
+        window.makeKeyAndOrderFront(nil)
 
         settingsWindow = window
 
