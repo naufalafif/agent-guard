@@ -40,17 +40,9 @@ AgentGuard puts both scanners behind a menu bar icon. It scans on a schedule, sh
 
 ![AgentGuard popover showing findings](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/pv2k1ainq7oyalpv74eq.png)
 
-Click a finding to see full details — what was detected, which rule flagged it, and the option to mute it:
+Click any finding to expand — see what was flagged, why, and mute it if it's a false positive:
 
 ![Finding expanded with details](https://dev-to-uploads.s3.amazonaws.com/uploads/articles/xiqo7e3ljv7a9iio8zdz.png)
-
-**What you get:**
-
-- Shield icon in menu bar — green when clear, red + count when there are findings
-- MCP Servers and AI Agent Skills as separate sections
-- Click to expand finding details — threat name, category, rule ID
-- Mute with confirmation — dismiss known false positives, unmute anytime
-- Settings — scan interval, custom skill directories, launch at login
 
 **Install:**
 
