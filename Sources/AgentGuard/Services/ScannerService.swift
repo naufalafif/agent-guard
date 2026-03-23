@@ -16,7 +16,8 @@ actor ScannerService {
     private let ignoreFile: URL
 
     private let defaultSkillDirs: [String] = [
-        "~/.cursor/skills", "~/.cursor/rules", "~/.claude/skills",
+        "~/.cursor/skills", "~/.cursor/rules",
+        "~/.claude/skills", "~/.claude/plugins",
         "~/.agents/skills", "~/.codex/skills", "~/.cline/skills",
         "~/.opencode/skills", "~/.config/opencode", "~/.continue/skills",
         "~/.gemini/skills", "~/.codeium/windsurf/skills", "~/.kiro/skills",
