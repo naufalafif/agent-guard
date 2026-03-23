@@ -121,36 +121,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private var hasActivatedBefore = false
+
     func showSettings() {
-        // Close popover if open
         if popover.isShown { popover.performClose(nil) }
 
-        // Show in Dock and activate BEFORE showing window
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-
-        // Reuse existing window or create new one
-        if let window = settingsWindow {
-            window.center()
-            window.makeKeyAndOrderFront(nil)
-            return
+        // Create window if needed
+        if settingsWindow == nil {
+            let hostingController = NSHostingController(rootView: SettingsView())
+            let w = NSWindow(contentViewController: hostingController)
+            w.title = "AgentGuard Settings"
+            w.styleMask = [.titled, .closable]
+            w.isReleasedWhenClosed = false
+            w.setContentSize(NSSize(width: 420, height: 480))
+            w.setFrameAutosaveName("AgentGuardSettings")
+            settingsWindow = w
+            setupSettingsWindowCloseHandler(w)
         }
 
-        let settingsView = SettingsView()
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "AgentGuard Settings"
-        window.styleMask = [.titled, .closable]
-        window.isReleasedWhenClosed = false
+        guard let window = settingsWindow else { return }
 
-        // Size the window first, then center it properly
-        window.setContentSize(NSSize(width: 420, height: 480))
-        window.center()
+        // Center using visibleFrame (true center, not Apple's upper-third)
+        // Only if no saved position from previous session
+        if !window.setFrameUsingName("AgentGuardSettings") {
+            if let screen = NSScreen.main {
+                let vis = screen.visibleFrame
+                let x = vis.midX - window.frame.width / 2
+                let y = vis.midY - window.frame.height / 2
+                window.setFrameOrigin(NSPoint(x: x, y: y))
+            }
+        }
+
         window.makeKeyAndOrderFront(nil)
+        NSApp.setActivationPolicy(.regular)
 
-        settingsWindow = window
+        // Ice-style: first activation from .accessory needs Dock hack
+        if !hasActivatedBefore {
+            hasActivatedBefore = true
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first?.activate()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
 
-        // Watch for window close to hide from Dock again
+    private func setupSettingsWindowCloseHandler(_ window: NSWindow) {
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
