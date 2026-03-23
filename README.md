@@ -2,7 +2,7 @@
 
 Native macOS menu bar app that scans your MCP servers and AI agent skills for security threats.
 
-![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black?style=flat-square) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square) ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+![macOS 13+](https://img.shields.io/badge/macOS-13%2B-black?style=flat-square) ![Swift](https://img.shields.io/badge/Swift-5.9-orange?style=flat-square) ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square) ![CI](https://github.com/naufalafif/agent-guard/actions/workflows/ci.yml/badge.svg) ![Release](https://github.com/naufalafif/agent-guard/actions/workflows/release.yml/badge.svg)
 
 <p align="center">
   <img src="screenshot.png?v=2" width="500" alt="AgentGuard" />
