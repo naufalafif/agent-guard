@@ -68,8 +68,8 @@ fi
 cd "$TAP_DIR"
 git pull
 
-sed -i '' "s/version \".*\"/version \"$VERSION\"/" Casks/agent-guard.rb
-sed -i '' "s/sha256 \".*\"/sha256 \"$SHA\"/" Casks/agent-guard.rb
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+"$SCRIPT_DIR/build-cask.sh" "$VERSION" "$SHA" > Casks/agent-guard.rb
 
 git add -A
 git commit -m "chore: bump to v$VERSION"
