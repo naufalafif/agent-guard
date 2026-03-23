@@ -151,7 +151,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: window,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
                 self?.settingsWindow = nil
                 NSApp.setActivationPolicy(.accessory)
             }
