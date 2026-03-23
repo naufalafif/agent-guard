@@ -65,7 +65,7 @@ struct SettingsView: View {
                 }
 
                 Section("About") {
-                    LabeledContent("Version", value: "1.0.0")
+                    LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown")
                     LabeledContent("Scanners") {
                         VStack(alignment: .trailing, spacing: 2) {
                             if let url = URL(string: "https://github.com/cisco-ai-defense/mcp-scanner") {
