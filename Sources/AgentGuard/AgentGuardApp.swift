@@ -229,7 +229,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         state.isScanning = true
         updateMenuBarIcon()
 
-        try? "[\(Date())] Scan starting...\n".write(to: logFile, atomically: true, encoding: .utf8)
+        if let data = "[\(Date())] Scan starting...\n".data(using: .utf8),
+           let handle = try? FileHandle(forWritingTo: logFile) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            try? "[\(Date())] Scan starting...\n".write(to: logFile, atomically: true, encoding: .utf8)
+        }
 
         let result = await scanner.runFullScan()
 
@@ -240,7 +247,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
           Scanners: mcp=\(result.mcpScannerVersion) skill=\(result.skillScannerVersion) installed=\(result.skillScannerInstalled)
           Interval: \(result.scanInterval)m\n
         """
-        try? log.write(to: logFile, atomically: true, encoding: .utf8)
+        if let data = log.data(using: .utf8),
+           let handle = try? FileHandle(forWritingTo: logFile) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            handle.closeFile()
+        } else {
+            try? log.write(to: logFile, atomically: true, encoding: .utf8)
+        }
 
         state.lastScanDate = result.scanDate
         state.mcpResult = result.mcp

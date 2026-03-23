@@ -28,13 +28,84 @@ actor ScannerService {
         cacheDir = home.appendingPathComponent(".cache/mcp-scan")
         configFile = home.appendingPathComponent(".config/mcp-scan/config")
         ignoreFile = cacheDir.appendingPathComponent("ignore.json")
-        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
     }
 
-    // MARK: - Shell helpers
+    // MARK: - Process helpers
 
+    /// Resolve the full path of an executable by checking common locations and using /usr/bin/which.
+    private func resolveExecutable(_ name: String) async -> String? {
+        // If already an absolute path, use directly
+        if name.hasPrefix("/") { return name }
+
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let commonPaths = [
+            "\(home)/.local/bin/\(name)",
+            "/opt/homebrew/bin/\(name)",
+            "/usr/local/bin/\(name)",
+            "/usr/bin/\(name)",
+        ]
+        for path in commonPaths {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+
+        // Fall back to /usr/bin/which
+        let result = await runProcess("/usr/bin/which", arguments: [name], timeout: 5)
+        let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty && FileManager.default.isExecutableFile(atPath: trimmed) {
+            return trimmed
+        }
+        return nil
+    }
+
+    /// Run a process with an argument array (no shell interpolation) and return stdout.
+    private func runProcess(_ executable: String, arguments: [String], timeout: TimeInterval = 120) async -> String {
+        let tmpFile = cacheDir.appendingPathComponent("proc-\(UUID().uuidString).tmp")
+
+        guard let stdout = FileHandle(forWritingAtPath: tmpFile.path) ?? {
+            FileManager.default.createFile(atPath: tmpFile.path, contents: nil)
+            return FileHandle(forWritingAtPath: tmpFile.path)
+        }() else {
+            return ""
+        }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = arguments
+        process.standardOutput = stdout
+        process.standardError = FileHandle.nullDevice
+
+        do {
+            try process.run()
+        } catch {
+            try? stdout.close()
+            try? FileManager.default.removeItem(at: tmpFile)
+            return ""
+        }
+
+        let result: String = await Task.detached {
+            let deadline = Date().addingTimeInterval(timeout)
+            while process.isRunning && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            if process.isRunning {
+                process.terminate()
+                process.waitUntilExit()
+            }
+            try? stdout.close()
+            let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
+            try? FileManager.default.removeItem(at: tmpFile)
+            return output
+        }.value
+
+        return result
+    }
+
+    /// Legacy shell helper — kept private, only for safe hardcoded commands.
     private func shell(_ command: String, timeout: TimeInterval = 120) async throws -> String {
-        // Write output to a temp file to avoid pipe deadlocks in .app bundles
         let tmpFile = cacheDir.appendingPathComponent("shell-\(UUID().uuidString).tmp")
         let fullCommand = "\(command) > '\(tmpFile.path)' 2>/dev/null"
 
@@ -46,9 +117,7 @@ actor ScannerService {
 
         try process.run()
 
-        // Run blocking wait on a detached task to avoid blocking the actor
         let result: String = await Task.detached {
-            // Timeout: kill process if it takes too long
             let deadline = Date().addingTimeInterval(timeout)
             while process.isRunning && Date() < deadline {
                 Thread.sleep(forTimeInterval: 0.1)
@@ -67,21 +136,28 @@ actor ScannerService {
     }
 
     private func commandExists(_ cmd: String) async -> Bool {
-        let result = try? await shell("command -v \(cmd)")
-        return !(result?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+        let resolved = await resolveExecutable(cmd)
+        return resolved != nil
     }
 
     private func getVersion(_ cmd: String) async -> String {
-        // Try --version, -V, then uv tool list
+        guard let path = await resolveExecutable(cmd) else { return "" }
+        // Try --version, then -V
         for flag in ["--version", "-V"] {
-            if let out = try? await shell("\(cmd) \(flag) 2>/dev/null | head -1"),
-               let match = out.range(of: #"[0-9]+\.[0-9]+\.[0-9]+"#, options: .regularExpression) {
+            let out = await runProcess(path, arguments: [flag], timeout: 10)
+            if let match = out.range(of: #"[0-9]+\.[0-9]+\.[0-9]+"#, options: .regularExpression) {
                 return String(out[match])
             }
         }
-        if let out = try? await shell("uv tool list 2>/dev/null | grep -i \(cmd)"),
-           let match = out.range(of: #"[0-9]+\.[0-9]+\.[0-9]+"#, options: .regularExpression) {
-            return String(out[match])
+        // Fall back to uv tool list
+        if let uvPath = await resolveExecutable("uv") {
+            let out = await runProcess(uvPath, arguments: ["tool", "list"], timeout: 10)
+            for line in out.components(separatedBy: "\n") {
+                if line.localizedCaseInsensitiveContains(cmd),
+                   let match = line.range(of: #"[0-9]+\.[0-9]+\.[0-9]+"#, options: .regularExpression) {
+                    return String(line[match])
+                }
+            }
         }
         return ""
     }
@@ -149,6 +225,7 @@ actor ScannerService {
         do {
             try data.write(to: tmp)
             _ = try FileManager.default.replaceItemAt(ignoreFile, withItemAt: tmp)
+            try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: ignoreFile.path)
         } catch {
             try? FileManager.default.removeItem(at: tmp)
         }
@@ -186,20 +263,16 @@ actor ScannerService {
     }
 
     private func runMCPScan(ignored: Set<String>) async -> MCPResult {
-        guard await commandExists("mcp-scanner") else {
+        guard let mcpPath = await resolveExecutable("mcp-scanner") else {
             return .empty
         }
 
         let jsonStr: String
-        do {
-            let raw = try await shell("mcp-scanner --analyzers yara --raw known-configs 2>/dev/null")
-            // Strip any non-JSON prefix (scanner outputs logs before JSON)
-            if let idx = raw.firstIndex(of: "{") {
-                jsonStr = String(raw[idx...])
-            } else {
-                return .empty
-            }
-        } catch {
+        let raw = await runProcess(mcpPath, arguments: ["--analyzers", "yara", "--raw", "known-configs"])
+        // Strip any non-JSON prefix (scanner outputs logs before JSON)
+        if let idx = raw.firstIndex(of: "{") {
+            jsonStr = String(raw[idx...])
+        } else {
             return .empty
         }
 
@@ -272,7 +345,7 @@ actor ScannerService {
     }
 
     private func runSkillScan(dirs: [String], ignored: Set<String>) async -> SkillResult {
-        guard await commandExists("skill-scanner") else {
+        guard let skillPath = await resolveExecutable("skill-scanner") else {
             return SkillResult(findings: [], safeSkills: [], skillCount: 0)
         }
 
@@ -284,9 +357,7 @@ actor ScannerService {
         var allEntries: [[String: Any]] = []
 
         for dir in existingDirs {
-            guard let raw = try? await shell("skill-scanner scan-all '\(dir)' --recursive --format json 2>/dev/null") else {
-                continue
-            }
+            let raw = await runProcess(skillPath, arguments: ["scan-all", dir, "--recursive", "--format", "json"])
             let cleaned = raw.sanitizedForJSON()
             guard let data = cleaned.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
