@@ -69,7 +69,11 @@ format:
 
 format-check:
 	@echo "--- swift-format check ---"
-	@swift-format lint --recursive Sources/
+	@if command -v swift-format >/dev/null; then \
+		swift-format lint --recursive Sources/; \
+	else \
+		echo "swift-format not installed (brew install swift-format), skipping"; \
+	fi
 
 check: build lint format-check
 	@echo "All checks passed"
