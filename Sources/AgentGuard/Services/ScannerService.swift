@@ -88,17 +88,17 @@ actor ScannerService {
         let result: String = await Task.detached {
             let deadline = Date().addingTimeInterval(timeout)
             while process.isRunning && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.1)
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
             if process.isRunning {
                 process.terminate()
             }
             process.waitUntilExit()
             // Close file handle and flush to disk before reading
-            try? stdout.synchronizeFile()
+            stdout.synchronizeFile()
             try? stdout.close()
             // Small delay to ensure filesystem sync
-            Thread.sleep(forTimeInterval: 0.1)
+            try? await Task.sleep(nanoseconds: 100_000_000)
             let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
             try? FileManager.default.removeItem(at: tmpFile)
             return output
@@ -123,7 +123,7 @@ actor ScannerService {
         let result: String = await Task.detached {
             let deadline = Date().addingTimeInterval(timeout)
             while process.isRunning && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.1)
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
             if process.isRunning {
                 process.terminate()
@@ -191,10 +191,38 @@ actor ScannerService {
             }
         }
 
-        let dirs = skillDirs ?? defaultSkillDirs.map {
-            $0.replacingOccurrences(of: "~", with: FileManager.default.homeDirectoryForCurrentUser.path)
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let configured = skillDirs ?? defaultSkillDirs.map {
+            $0.replacingOccurrences(of: "~", with: home)
         }
-        return (interval, dirs)
+
+        // Always include active Claude plugin install paths on top of configured dirs.
+        let claudeDirs = installedClaudePluginDirs()
+        let merged = (configured + claudeDirs).reduce(into: [String]()) { result, dir in
+            if !result.contains(dir) { result.append(dir) }
+        }
+        return (interval, merged)
+    }
+
+    /// Read ~/.claude/plugins/installed_plugins.json and return one installPath per plugin.
+    /// Prefers user-scoped installs over project-scoped to avoid scanning the same plugin twice.
+    private func installedClaudePluginDirs() -> [String] {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let manifestURL = URL(fileURLWithPath: "\(home)/.claude/plugins/installed_plugins.json")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let plugins = json["plugins"] as? [String: [[String: Any]]] else {
+            return []
+        }
+        var dirs: [String] = []
+        for entries in plugins.values {
+            // Prefer user-scoped entry; fall back to first available.
+            let preferred = entries.first(where: { ($0["scope"] as? String) == "user" }) ?? entries.first
+            if let path = preferred?["installPath"] as? String, !path.isEmpty {
+                dirs.append(path)
+            }
+        }
+        return dirs
     }
 
     // MARK: - Ignore list
@@ -357,17 +385,24 @@ actor ScannerService {
             return SkillResult(findings: [], safeSkills: [], skillCount: 0)
         }
 
-        var allEntries: [[String: Any]] = []
-
-        for dir in existingDirs {
-            let raw = await runProcess(skillPath, arguments: ["scan-all", dir, "--recursive", "--format", "json"])
-            let cleaned = raw.sanitizedForJSON()
-            guard let data = cleaned.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let results = json["results"] as? [[String: Any]] else {
-                continue
+        // Scan all directories concurrently instead of sequentially.
+        let allEntries: [[String: Any]] = await withTaskGroup(of: [[String: Any]].self) { group in
+            for dir in existingDirs {
+                group.addTask {
+                    let raw = await self.runProcess(
+                        skillPath, arguments: ["scan-all", dir, "--recursive", "--format", "json"])
+                    let cleaned = raw.sanitizedForJSON()
+                    guard let data = cleaned.data(using: .utf8),
+                          let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                          let results = json["results"] as? [[String: Any]] else {
+                        return []
+                    }
+                    return results
+                }
             }
-            allEntries.append(contentsOf: results)
+            var combined: [[String: Any]] = []
+            for await entries in group { combined.append(contentsOf: entries) }
+            return combined
         }
 
         var findings: [Finding] = []
