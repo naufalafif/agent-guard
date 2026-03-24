@@ -7,6 +7,14 @@
 - SwiftLint (`brew install swiftlint`) — for linting
 - swift-format (`brew install swift-format`) — for formatting
 
+## Setup
+
+```bash
+git clone https://github.com/naufalafif/agent-guard.git
+cd agent-guard
+./scripts/setup-hooks.sh    # installs pre-push hook (build + lint)
+```
+
 ## Development
 
 ```bash
