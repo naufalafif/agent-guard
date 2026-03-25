@@ -74,6 +74,7 @@ struct PopoverView: View {
 
     @State private var mcpSafeExpanded = false
     @State private var mcpMutedExpanded = false
+    @State private var mcpConfigsExpanded = false
 
     private var mcpSection: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -87,6 +88,13 @@ struct PopoverView: View {
             }
             ForEach(active) { finding in
                 FindingRowView(finding: finding, onIgnore: onIgnore)
+            }
+            if !state.mcpConfigInfos.isEmpty && state.mcpToolCount == 0 {
+                ExpandableHeader(label: "Configs", count: state.mcpConfigInfos.count,
+                                 icon: "doc.text", color: .secondary, isExpanded: $mcpConfigsExpanded)
+                if mcpConfigsExpanded {
+                    safeItemsList(items: state.mcpConfigInfos)
+                }
             }
             if !state.mcpSafeServers.isEmpty {
                 ExpandableHeader(label: "Safe", count: state.mcpSafeServers.count,
