@@ -14,10 +14,10 @@ final class ScanState: ObservableObject {
     var mcpFindings: [Finding] {
         get { mcpResult?.findings ?? [] }
         set {
-            var r = mcpResult ?? .empty
-            r = MCPResult(findings: newValue, safeServers: r.safeServers,
-                          configCount: r.configCount, serverCount: r.serverCount, toolCount: r.toolCount)
-            mcpResult = r
+            let r = mcpResult ?? .empty
+            mcpResult = MCPResult(findings: newValue, safeServers: r.safeServers,
+                                  configInfos: r.configInfos, configCount: r.configCount,
+                                  serverCount: r.serverCount, toolCount: r.toolCount)
         }
     }
 
@@ -30,6 +30,7 @@ final class ScanState: ObservableObject {
     }
 
     var mcpSafeServers: [SafeItem] { mcpResult?.safeServers ?? [] }
+    var mcpConfigInfos: [SafeItem] { mcpResult?.configInfos ?? [] }
     var mcpConfigCount: Int { mcpResult?.configCount ?? 0 }
     var mcpServerCount: Int { mcpResult?.serverCount ?? 0 }
     var mcpToolCount: Int { mcpResult?.toolCount ?? 0 }

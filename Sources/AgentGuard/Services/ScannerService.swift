@@ -204,6 +204,21 @@ actor ScannerService {
         return (interval, merged)
     }
 
+    /// Derive a friendly display name from a config file path.
+    private func friendlyConfigName(_ path: String) -> String {
+        let lower = path.lowercased()
+        if lower.contains("claude") { return "Claude" }
+        if lower.contains("cursor") { return "Cursor" }
+        if lower.contains("windsurf") { return "Windsurf" }
+        if lower.contains("vscode") || lower.contains("code") { return "VS Code" }
+        if lower.contains("zed") { return "Zed" }
+        if lower.contains("cline") { return "Cline" }
+        if lower.contains("continue") { return "Continue" }
+        if lower.contains("opencode") { return "OpenCode" }
+        let filename = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        return filename
+    }
+
     /// Read ~/.claude/plugins/installed_plugins.json and return one installPath per plugin.
     /// Prefers user-scoped installs over project-scoped to avoid scanning the same plugin twice.
     private func installedClaudePluginDirs() -> [String] {
@@ -318,7 +333,7 @@ actor ScannerService {
         var toolCount = 0
         var configCount = 0
 
-        for (_, tools) in configs {
+        for (configPath, tools) in configs {
             configCount += 1
             for tool in tools {
                 toolCount += 1
@@ -366,9 +381,22 @@ actor ScannerService {
             SafeItem(name: $0.key, detail: "\($0.value) tools")
         }
 
+        // Read each config file to extract server names for the configs section.
+        let configInfos: [SafeItem] = configs.keys.sorted().compactMap { path in
+            let url = URL(fileURLWithPath: path)
+            guard let data = try? Data(contentsOf: url),
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let mcpServers = json["mcpServers"] as? [String: Any] else {
+                return SafeItem(name: friendlyConfigName(path), detail: "")
+            }
+            let serverList = mcpServers.keys.sorted().joined(separator: ", ")
+            return SafeItem(name: friendlyConfigName(path), detail: serverList)
+        }
+
         return MCPResult(
             findings: findings.sorted { $0.severity < $1.severity },
             safeServers: safe,
+            configInfos: configInfos,
             configCount: configCount,
             serverCount: servers.count,
             toolCount: toolCount
@@ -470,11 +498,13 @@ struct ScanResult {
 struct MCPResult {
     let findings: [Finding]
     let safeServers: [SafeItem]
+    let configInfos: [SafeItem]
     let configCount: Int
     let serverCount: Int
     let toolCount: Int
 
-    static let empty = MCPResult(findings: [], safeServers: [], configCount: 0, serverCount: 0, toolCount: 0)
+    static let empty = MCPResult(findings: [], safeServers: [], configInfos: [],
+                                 configCount: 0, serverCount: 0, toolCount: 0)
 }
 
 struct SkillResult {
