@@ -9,7 +9,11 @@ enum ScreenshotValidator {
     /// Capture a screenshot of the given window and save to disk.
     @MainActor
     static func capture(window: NSWindow?, label: String = "popover") -> URL? {
-        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+        try? FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true,
+                                                   attributes: [.posixPermissions: 0o700])
+        // Enforce on existing dir too
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: outputDir.path)
 
         guard let window = window,
               let screen = window.screen else { return nil }

@@ -8,6 +8,7 @@ final class ScanState: ObservableObject {
     @Published var mcpResult: MCPResult?
     @Published var skillResult: SkillResult?
     @Published var scannerInfo: ScannerInfo?
+    @Published var lastError: String?
 
     // MARK: - Computed accessors (preserve existing API)
 
@@ -17,15 +18,17 @@ final class ScanState: ObservableObject {
             let r = mcpResult ?? .empty
             mcpResult = MCPResult(findings: newValue, safeServers: r.safeServers,
                                   configInfos: r.configInfos, configCount: r.configCount,
-                                  serverCount: r.serverCount, toolCount: r.toolCount)
+                                  serverCount: r.serverCount, toolCount: r.toolCount,
+                                  error: r.error)
         }
     }
 
     var skillFindings: [Finding] {
         get { skillResult?.findings ?? [] }
         set {
-            let r = skillResult ?? SkillResult(findings: [], safeSkills: [], skillCount: 0)
-            skillResult = SkillResult(findings: newValue, safeSkills: r.safeSkills, skillCount: r.skillCount)
+            let r = skillResult ?? SkillResult(findings: [], safeSkills: [], skillCount: 0, error: nil)
+            skillResult = SkillResult(findings: newValue, safeSkills: r.safeSkills,
+                                      skillCount: r.skillCount, error: r.error)
         }
     }
 
@@ -75,6 +78,7 @@ final class ScanState: ObservableObject {
 
     var statusIcon: String {
         if isScanning { return "shield.lefthalf.filled" }
+        if lastError != nil { return "exclamationmark.shield.fill" }
         if totalActiveCount > 0 { return "exclamationmark.shield.fill" }
         return "checkmark.shield.fill"
     }

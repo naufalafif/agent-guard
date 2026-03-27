@@ -234,10 +234,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             let data = Data(startMsg.utf8)
             handle.seekToEndOfFile()
             handle.write(data)
-            handle.closeFile()
+            try? handle.close()
         } else {
             try? startMsg.write(to: logFile, atomically: true, encoding: .utf8)
         }
+        // Ensure log file is not world-readable
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: logFile.path)
 
         let result = await scanner.runFullScan()
 
@@ -253,7 +256,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
            let handle = try? FileHandle(forWritingTo: logFile) {
             handle.seekToEndOfFile()
             handle.write(data)
-            handle.closeFile()
+            try? handle.close()
         } else {
             try? log.write(to: logFile, atomically: true, encoding: .utf8)
         }
@@ -266,6 +269,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             skillScannerVersion: result.skillScannerVersion,
             skillScannerInstalled: result.skillScannerInstalled
         )
+        state.lastError = result.errors.isEmpty ? nil : result.errors.joined(separator: "; ")
         state.isScanning = false
         currentScanInterval = TimeInterval(result.scanInterval * 60)
 
@@ -309,7 +313,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
            let handle = try? FileHandle(forWritingTo: logFile) {
             handle.seekToEndOfFile()
             handle.write(data)
-            handle.closeFile()
+            try? handle.close()
         }
     }
     #endif

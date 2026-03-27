@@ -17,6 +17,9 @@ struct PopoverView: View {
 
             ScrollView {
                 VStack(spacing: 2) {
+                    if let error = state.lastError {
+                        errorBanner(error)
+                    }
                     mcpSection
                     Divider().padding(.vertical, 4).padding(.horizontal, 12)
                     skillSection
@@ -218,6 +221,24 @@ struct PopoverView: View {
     }
 
     // MARK: - Shared
+
+    private func errorBanner(_ message: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10))
+                .foregroundStyle(.orange)
+            Text(message)
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 5).fill(Color.orange.opacity(0.08)))
+        .padding(.horizontal, 2)
+        .padding(.bottom, 4)
+    }
 
     private func sectionHeader(icon: String, title: String, subtitle: String) -> some View {
         HStack(spacing: 5) {

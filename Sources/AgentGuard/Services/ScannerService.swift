@@ -31,6 +31,14 @@ actor ScannerService {
         ignoreFile = cacheDir.appendingPathComponent("ignore.json")
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
+        // Enforce permissions on existing dirs (may have been created with defaults)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: cacheDir.path)
+        let screenshotDir = cacheDir.appendingPathComponent("screenshots")
+        if FileManager.default.fileExists(atPath: screenshotDir.path) {
+            try? FileManager.default.setAttributes(
+                [.posixPermissions: 0o700], ofItemAtPath: screenshotDir.path)
+        }
     }
 
     // MARK: - Process helpers
@@ -94,42 +102,11 @@ actor ScannerService {
                 process.terminate()
             }
             process.waitUntilExit()
-            // Close file handle and flush to disk before reading
-            stdout.synchronizeFile()
+            // Flush and close file handle before reading
+            try? stdout.synchronize()
             try? stdout.close()
             // Small delay to ensure filesystem sync
             try? await Task.sleep(nanoseconds: 100_000_000)
-            let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
-            try? FileManager.default.removeItem(at: tmpFile)
-            return output
-        }.value
-
-        return result
-    }
-
-    /// Legacy shell helper — kept private, only for safe hardcoded commands.
-    private func shell(_ command: String, timeout: TimeInterval = 120) async throws -> String {
-        let tmpFile = cacheDir.appendingPathComponent("shell-\(UUID().uuidString).tmp")
-        let fullCommand = "\(command) > '\(tmpFile.path)' 2>/dev/null"
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/bash")
-        process.arguments = ["-lc", fullCommand]
-        process.standardOutput = FileHandle.nullDevice
-        process.standardError = FileHandle.nullDevice
-
-        try process.run()
-
-        let result: String = await Task.detached {
-            let deadline = Date().addingTimeInterval(timeout)
-            while process.isRunning && Date() < deadline {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
-            if process.isRunning {
-                process.terminate()
-                process.waitUntilExit()
-            }
-
             let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
             try? FileManager.default.removeItem(at: tmpFile)
             return output
@@ -297,6 +274,10 @@ actor ScannerService {
         let mcp = await mcpResult
         let skill = await skillResult
 
+        var errors: [String] = []
+        if let err = mcp.error { errors.append(err) }
+        if let err = skill.error { errors.append(err) }
+
         return ScanResult(
             mcp: mcp,
             skill: skill,
@@ -304,13 +285,15 @@ actor ScannerService {
             skillScannerVersion: await skillVer,
             skillScannerInstalled: await hasSkillScanner,
             scanDate: Date(),
-            scanInterval: config.interval
+            scanInterval: config.interval,
+            errors: errors
         )
     }
 
     private func runMCPScan(ignored: Set<String>) async -> MCPResult {
         guard let mcpPath = await resolveExecutable("mcp-scanner") else {
-            return .empty
+            return MCPResult(findings: [], safeServers: [], configInfos: [], configCount: 0, serverCount: 0, toolCount: 0,
+                             error: "mcp-scanner not found")
         }
 
         let jsonStr: String
@@ -319,12 +302,15 @@ actor ScannerService {
         if let idx = raw.firstIndex(of: "{") {
             jsonStr = String(raw[idx...])
         } else {
-            return .empty
+            let hint = raw.isEmpty ? "no output" : "unexpected output"
+            return MCPResult(findings: [], safeServers: [], configInfos: [], configCount: 0, serverCount: 0, toolCount: 0,
+                             error: "mcp-scanner failed (\(hint))")
         }
 
         guard let data = jsonStr.data(using: .utf8),
               let configs = try? JSONSerialization.jsonObject(with: data) as? [String: [[String: Any]]] else {
-            return .empty
+            return MCPResult(findings: [], safeServers: [], configInfos: [], configCount: 0, serverCount: 0, toolCount: 0,
+                             error: "Failed to parse mcp-scanner output")
         }
 
         var findings: [Finding] = []
@@ -399,18 +385,20 @@ actor ScannerService {
             configInfos: configInfos,
             configCount: configCount,
             serverCount: servers.count,
-            toolCount: toolCount
+            toolCount: toolCount,
+            error: nil
         )
     }
 
     private func runSkillScan(dirs: [String], ignored: Set<String>) async -> SkillResult {
         guard let skillPath = await resolveExecutable("skill-scanner") else {
-            return SkillResult(findings: [], safeSkills: [], skillCount: 0)
+            // Not an error — skill-scanner is optional
+            return SkillResult(findings: [], safeSkills: [], skillCount: 0, error: nil)
         }
 
         let existingDirs = dirs.filter { FileManager.default.fileExists(atPath: $0) }
         guard !existingDirs.isEmpty else {
-            return SkillResult(findings: [], safeSkills: [], skillCount: 0)
+            return SkillResult(findings: [], safeSkills: [], skillCount: 0, error: nil)
         }
 
         // Scan all directories concurrently instead of sequentially.
@@ -478,7 +466,8 @@ actor ScannerService {
         return SkillResult(
             findings: findings.sorted { $0.severity < $1.severity },
             safeSkills: safe,
-            skillCount: allSkills.count
+            skillCount: allSkills.count,
+            error: nil
         )
     }
 }
@@ -493,6 +482,7 @@ struct ScanResult {
     let skillScannerInstalled: Bool
     let scanDate: Date
     let scanInterval: Int  // minutes, from config
+    let errors: [String]   // non-fatal errors to display in UI
 }
 
 struct MCPResult {
@@ -502,13 +492,15 @@ struct MCPResult {
     let configCount: Int
     let serverCount: Int
     let toolCount: Int
+    let error: String?
 
     static let empty = MCPResult(findings: [], safeServers: [], configInfos: [],
-                                 configCount: 0, serverCount: 0, toolCount: 0)
+                                 configCount: 0, serverCount: 0, toolCount: 0, error: nil)
 }
 
 struct SkillResult {
     let findings: [Finding]
     let safeSkills: [SafeItem]
     let skillCount: Int
+    let error: String?
 }

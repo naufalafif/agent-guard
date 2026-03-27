@@ -158,6 +158,8 @@ struct SettingsView: View {
             lines.append("SKILL_DIRS=\"\(joined)\"")
         }
         try? lines.joined(separator: "\n").write(to: configFile, atomically: true, encoding: .utf8)
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: configFile.path)
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
