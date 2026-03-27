@@ -12,7 +12,6 @@ extension String {
 
 actor ScannerService {
     private let cacheDir: URL
-    private let configFile: URL
     private let ignoreFile: URL
 
     private let defaultSkillDirs: [String] = [
@@ -27,7 +26,6 @@ actor ScannerService {
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
         cacheDir = home.appendingPathComponent(".cache/mcp-scan")
-        configFile = home.appendingPathComponent(".config/mcp-scan/config")
         ignoreFile = cacheDir.appendingPathComponent("ignore.json")
         try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
@@ -43,22 +41,9 @@ actor ScannerService {
 
     // MARK: - Process helpers
 
-    /// Resolve the full path of an executable by checking common locations and using /usr/bin/which.
+    /// Resolve the full path of an executable by checking common locations, then /usr/bin/which.
     private func resolveExecutable(_ name: String) async -> String? {
-        // If already an absolute path, use directly
-        if name.hasPrefix("/") { return name }
-
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let commonPaths = [
-            "\(home)/.local/bin/\(name)",
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-            "/usr/bin/\(name)",
-        ]
-        for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
-
+        if let path = ConfigIO.findExecutable(name) { return path }
         // Fall back to /usr/bin/which
         let result = await runProcess("/usr/bin/which", arguments: [name], timeout: 5)
         let trimmed = result.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -145,30 +130,17 @@ actor ScannerService {
     // MARK: - Config
 
     private func loadConfig() -> (interval: Int, skillDirs: [String]) {
-        var interval = 30
-        var skillDirs: [String]?
+        let raw = ConfigIO.load()
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
 
-        if let content = try? String(contentsOf: configFile, encoding: .utf8) {
-            for line in content.components(separatedBy: "\n") {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if trimmed.hasPrefix("SCAN_INTERVAL=") {
-                    let val = trimmed.replacingOccurrences(of: "SCAN_INTERVAL=", with: "")
-                        .components(separatedBy: "#").first?
-                        .trimmingCharacters(in: .whitespaces) ?? ""
-                    interval = Int(val) ?? 30
-                }
-                if trimmed.hasPrefix("SKILL_DIRS=") {
-                    let val = trimmed.replacingOccurrences(of: "SKILL_DIRS=", with: "")
-                        .replacingOccurrences(of: "\"", with: "")
-                        .components(separatedBy: "#").first?
-                        .trimmingCharacters(in: .whitespaces) ?? ""
-                    let expanded = val.replacingOccurrences(of: "$HOME", with: FileManager.default.homeDirectoryForCurrentUser.path)
-                    skillDirs = expanded.components(separatedBy: ":").filter { !$0.isEmpty }
-                }
-            }
+        var skillDirs: [String]?
+        if !raw.skillDirs.isEmpty {
+            let expanded = raw.skillDirs
+                .replacingOccurrences(of: "$HOME", with: home)
+                .replacingOccurrences(of: "~", with: home)
+            skillDirs = expanded.components(separatedBy: ":").filter { !$0.isEmpty }
         }
 
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
         let configured = skillDirs ?? defaultSkillDirs.map {
             $0.replacingOccurrences(of: "~", with: home)
         }
@@ -178,7 +150,7 @@ actor ScannerService {
         let merged = (configured + claudeDirs).reduce(into: [String]()) { result, dir in
             if !result.contains(dir) { result.append(dir) }
         }
-        return (interval, merged)
+        return (raw.interval, merged)
     }
 
     /// Derive a friendly display name from a config file path.
@@ -256,7 +228,7 @@ actor ScannerService {
 
     /// Public method to read the configured scan interval (in minutes).
     func loadScanInterval() -> Int {
-        loadConfig().interval
+        ConfigIO.load().interval
     }
 
     // MARK: - Run scans
@@ -319,7 +291,7 @@ actor ScannerService {
         var toolCount = 0
         var configCount = 0
 
-        for (configPath, tools) in configs {
+        for (_, tools) in configs {
             configCount += 1
             for tool in tools {
                 toolCount += 1

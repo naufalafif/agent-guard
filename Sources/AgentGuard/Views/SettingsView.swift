@@ -6,9 +6,7 @@ struct SettingsView: View {
     @State private var skillDirs: String = ""
     @State private var launchAtLogin: Bool = false
     @State private var saved = false
-
-    private let configFile = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".config/mcp-scan/config")
+    var onSave: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -104,6 +102,7 @@ struct SettingsView: View {
                 Spacer()
                 Button("Save") {
                     saveConfig()
+                    onSave?()
                     withAnimation { saved = true }
                     DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                         withAnimation { saved = false }
@@ -121,23 +120,9 @@ struct SettingsView: View {
     // MARK: - Config IO
 
     private func loadConfig() {
-        guard let content = try? String(contentsOf: configFile, encoding: .utf8) else { return }
-        for line in content.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("SCAN_INTERVAL=") {
-                let val = trimmed.replacingOccurrences(of: "SCAN_INTERVAL=", with: "")
-                    .components(separatedBy: "#").first?
-                    .trimmingCharacters(in: .whitespaces) ?? ""
-                scanInterval = Int(val) ?? 30
-            }
-            if trimmed.hasPrefix("SKILL_DIRS=") {
-                let val = trimmed.replacingOccurrences(of: "SKILL_DIRS=", with: "")
-                    .replacingOccurrences(of: "\"", with: "")
-                    .components(separatedBy: "#").first?
-                    .trimmingCharacters(in: .whitespaces) ?? ""
-                skillDirs = val.replacingOccurrences(of: ":", with: "\n")
-            }
-        }
+        let config = ConfigIO.load()
+        scanInterval = config.interval
+        skillDirs = config.skillDirs.replacingOccurrences(of: ":", with: "\n")
 
         if #available(macOS 13.0, *) {
             launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -145,21 +130,12 @@ struct SettingsView: View {
     }
 
     private func saveConfig() {
-        let dir = configFile.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-
-        var lines = ["SCAN_INTERVAL=\(scanInterval)  # Scan interval in minutes"]
         let dirs = skillDirs.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !dirs.isEmpty {
-            let joined = dirs.components(separatedBy: "\n")
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-                .joined(separator: ":")
-            lines.append("SKILL_DIRS=\"\(joined)\"")
-        }
-        try? lines.joined(separator: "\n").write(to: configFile, atomically: true, encoding: .utf8)
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o600], ofItemAtPath: configFile.path)
+        let joined = dirs.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: ":")
+        ConfigIO.save(ConfigIO.Config(interval: scanInterval, skillDirs: joined))
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {

@@ -51,10 +51,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var popover: NSPopover!
     private var statusView: ClickThroughHostingView<MenuBarIconView>?
     private var settingsWindow: NSWindow?
+    private var settingsCloseObserver: NSObjectProtocol?
     private let state = ScanState()
     private let scanner = ScannerService()
     private let deps = DependencyManager()
     private var currentScanInterval: TimeInterval = 300
+    private var periodicScanTask: Task<Void, Never>?
 
     nonisolated func applicationDidFinishLaunching(_ notification: Notification) {
         Task { @MainActor in
@@ -95,7 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task { [weak self] in
             await self?.deps.ensureDependencies()
             await self?.performScan()
-            await self?.startPeriodicScan()
+            self?.startPeriodicScan()
         }
     }
 
@@ -128,7 +130,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Create window if needed
         if settingsWindow == nil {
-            let hostingController = NSHostingController(rootView: SettingsView())
+            let settingsView = SettingsView(onSave: { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.restartPeriodicScan()
+                    await self?.performScan()
+                }
+            })
+            let hostingController = NSHostingController(rootView: settingsView)
             let w = NSWindow(contentViewController: hostingController)
             w.title = "AgentGuard Settings"
             w.styleMask = [.titled, .closable]
@@ -168,12 +176,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupSettingsWindowCloseHandler(_ window: NSWindow) {
-        NotificationCenter.default.addObserver(
+        // Remove previous observer to avoid accumulating duplicates
+        if let existing = settingsCloseObserver {
+            NotificationCenter.default.removeObserver(existing)
+        }
+        settingsCloseObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification,
             object: window,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
+            guard self != nil else { return }
             Task { @MainActor [weak self] in
                 self?.settingsWindow = nil
                 NSApp.setActivationPolicy(.accessory)
@@ -212,12 +224,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func startPeriodicScan() {
-        Task { [weak self] in
-            while let self {
-                try? await Task.sleep(nanoseconds: UInt64(self.currentScanInterval) * 1_000_000_000)
-                await self.performScan()
+        periodicScanTask = Task { [weak self] in
+            var elapsed: TimeInterval = 0
+            let tick: TimeInterval = 5  // check every 5 seconds
+            while let self, !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(tick) * 1_000_000_000)
+                elapsed += tick
+                if elapsed >= self.currentScanInterval {
+                    elapsed = 0
+                    await self.performScan()
+                }
             }
         }
+    }
+
+    /// Cancel the current periodic loop and start a fresh one (picks up new interval immediately).
+    private func restartPeriodicScan() {
+        periodicScanTask?.cancel()
+        startPeriodicScan()
     }
 
     private func performScan() async {

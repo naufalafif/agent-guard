@@ -28,19 +28,9 @@ actor DependencyManager {
         }
     }
 
-    /// Resolve the full path of an executable by checking common locations and /usr/bin/which.
+    /// Resolve the full path of an executable by checking common locations, then /usr/bin/which.
     private func resolveExecutable(_ name: String) -> String? {
-        if name.hasPrefix("/") { return name }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let commonPaths = [
-            "\(home)/.local/bin/\(name)",
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-            "/usr/bin/\(name)",
-        ]
-        for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
+        if let path = ConfigIO.findExecutable(name) { return path }
         // Fall back to /usr/bin/which using temp file (no Pipe — avoids deadlock in .app bundles)
         let result = runProcessSync("/usr/bin/which", arguments: [name], timeout: 5)
         let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
