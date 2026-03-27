@@ -1,10 +1,20 @@
-@preconcurrency import Dispatch
 import Foundation
 
 /// Ensures required CLI tools are available. Installs missing ones automatically on first launch.
 actor DependencyManager {
-    private let logFile = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent(".cache/mcp-scan/agentguard.log")
+    private let cacheDir: URL
+    private let logFile: URL
+
+    init() {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        cacheDir = home.appendingPathComponent(".cache/mcp-scan")
+        logFile = cacheDir.appendingPathComponent("agentguard.log")
+        try? FileManager.default.createDirectory(at: cacheDir, withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700])
+        // Enforce on existing dir too
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o700], ofItemAtPath: cacheDir.path)
+    }
 
     private func log(_ msg: String) {
         let line = "[\(Date())] [deps] \(msg)\n"
@@ -12,26 +22,16 @@ actor DependencyManager {
            let handle = try? FileHandle(forWritingTo: logFile) {
             handle.seekToEndOfFile()
             handle.write(data)
-            handle.closeFile()
+            try? handle.close()
         } else {
             try? line.write(to: logFile, atomically: true, encoding: .utf8)
         }
     }
 
-    /// Resolve the full path of an executable by checking common locations and /usr/bin/which.
+    /// Resolve the full path of an executable by checking common locations, then /usr/bin/which.
     private func resolveExecutable(_ name: String) -> String? {
-        if name.hasPrefix("/") { return name }
-        let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let commonPaths = [
-            "\(home)/.local/bin/\(name)",
-            "/opt/homebrew/bin/\(name)",
-            "/usr/local/bin/\(name)",
-            "/usr/bin/\(name)",
-        ]
-        for path in commonPaths where FileManager.default.isExecutableFile(atPath: path) {
-            return path
-        }
-        // Fall back to /usr/bin/which
+        if let path = ConfigIO.findExecutable(name) { return path }
+        // Fall back to /usr/bin/which using temp file (no Pipe — avoids deadlock in .app bundles)
         let result = runProcessSync("/usr/bin/which", arguments: [name], timeout: 5)
         let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty && FileManager.default.isExecutableFile(atPath: trimmed) {
@@ -45,64 +45,97 @@ actor DependencyManager {
         let success: Bool
     }
 
-    /// Run a process with argument array (no shell interpolation). Synchronous helper for actor context.
-    private func runProcessSync(_ executable: String, arguments: [String], timeout: TimeInterval = 30) -> ProcessResult {
+    /// Run a process with argument array (no shell interpolation).
+    /// Uses temp file for stdout to avoid Pipe deadlocks in .app bundles.
+    private func runProcessSync(
+        _ executable: String, arguments: [String], timeout: TimeInterval = 30
+    ) -> ProcessResult {
+        let tmpFile = cacheDir.appendingPathComponent("proc-\(UUID().uuidString).tmp")
+        FileManager.default.createFile(atPath: tmpFile.path, contents: nil)
+
+        guard let stdout = FileHandle(forWritingAtPath: tmpFile.path) else {
+            try? FileManager.default.removeItem(at: tmpFile)
+            return ProcessResult(output: "", success: false)
+        }
+
         let process = Process()
-        let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        process.standardOutput = pipe
-        process.standardError = pipe
+        process.standardOutput = stdout
+        process.standardError = stdout
 
         do {
             try process.run()
         } catch {
+            try? stdout.close()
+            try? FileManager.default.removeItem(at: tmpFile)
             return ProcessResult(output: "", success: false)
         }
 
-        let timeoutWork = DispatchWorkItem { [weak process] in
-            guard let process = process, process.isRunning else { return }
+        let deadline = Date().addingTimeInterval(timeout)
+        while process.isRunning && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        if process.isRunning {
             process.terminate()
         }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
-
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
-        timeoutWork.cancel()
-        let output = String(data: data, encoding: .utf8) ?? ""
+
+        try? stdout.synchronize()
+        try? stdout.close()
+
+        let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
+        try? FileManager.default.removeItem(at: tmpFile)
         return ProcessResult(output: output, success: process.terminationStatus == 0)
     }
 
     /// Run a process asynchronously with argument array (no shell interpolation).
-    private func runProcess(_ executable: String, arguments: [String], timeout: TimeInterval = 30) async -> ProcessResult {
+    /// Uses temp file for stdout to avoid Pipe deadlocks in .app bundles.
+    private func runProcess(
+        _ executable: String, arguments: [String], timeout: TimeInterval = 30
+    ) async -> ProcessResult {
+        let tmpFile = cacheDir.appendingPathComponent("proc-\(UUID().uuidString).tmp")
+        FileManager.default.createFile(atPath: tmpFile.path, contents: nil)
+
+        guard let stdout = FileHandle(forWritingAtPath: tmpFile.path) else {
+            try? FileManager.default.removeItem(at: tmpFile)
+            return ProcessResult(output: "", success: false)
+        }
+
         let process = Process()
-        let pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        process.standardOutput = pipe
-        process.standardError = pipe
+        process.standardOutput = stdout
+        process.standardError = stdout
 
         do {
             try process.run()
         } catch {
+            try? stdout.close()
+            try? FileManager.default.removeItem(at: tmpFile)
             return ProcessResult(output: "", success: false)
         }
 
-        let timeoutWork = DispatchWorkItem { [weak process] in
-            guard let process = process, process.isRunning else { return }
-            process.terminate()
-        }
-        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: timeoutWork)
-
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global().async {
-                let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                process.waitUntilExit()
-                timeoutWork.cancel()
-                let output = String(data: data, encoding: .utf8) ?? ""
-                continuation.resume(returning: ProcessResult(output: output, success: process.terminationStatus == 0))
+        let result: ProcessResult = await Task.detached {
+            let deadline = Date().addingTimeInterval(timeout)
+            while process.isRunning && Date() < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
-        }
+            if process.isRunning {
+                process.terminate()
+            }
+            process.waitUntilExit()
+
+            try? stdout.synchronize()
+            try? stdout.close()
+            try? await Task.sleep(nanoseconds: 100_000_000)
+
+            let output = (try? String(contentsOf: tmpFile, encoding: .utf8)) ?? ""
+            try? FileManager.default.removeItem(at: tmpFile)
+            return ProcessResult(output: output, success: process.terminationStatus == 0)
+        }.value
+
+        return result
     }
 
     private func commandExists(_ name: String) -> Bool {
