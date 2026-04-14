@@ -125,6 +125,34 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private var hasActivatedBefore = false
 
+    func promptAddSkillDir() {
+        if popover.isShown { popover.performClose(nil) }
+
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Select directories to scan for skills"
+
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, !panel.urls.isEmpty else { return }
+
+        let config = ConfigIO.load()
+        var dirs = config.skillDirs
+            .components(separatedBy: ":")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        for url in panel.urls where !dirs.contains(url.path) {
+            dirs.append(url.path)
+        }
+        ConfigIO.save(ConfigIO.Config(interval: config.interval, skillDirs: dirs.joined(separator: ":")))
+
+        Task { @MainActor [weak self] in
+            await self?.performScan()
+        }
+    }
+
     func showSettings() {
         if popover.isShown { popover.performClose(nil) }
 
@@ -212,6 +240,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     await self?.scanner.removeIgnore(key)
                     await self?.refreshIgnoreState()
                 }
+            },
+            onAddSkillDir: { [weak self] in
+                self?.promptAddSkillDir()
             },
             onSettings: { [weak self] in
                 self?.showSettings()

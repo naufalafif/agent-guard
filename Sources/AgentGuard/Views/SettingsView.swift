@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import ServiceManagement
 
@@ -42,7 +43,12 @@ struct SettingsView: View {
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Skill directories")
+                        HStack {
+                            Text("Skill directories")
+                            Spacer()
+                            Button("Add Directory…") { addDirectory() }
+                                .font(.system(size: 11))
+                        }
                         TextEditor(text: $skillDirs)
                             .font(.system(size: 11, design: .monospaced))
                             .frame(height: 60)
@@ -136,6 +142,26 @@ struct SettingsView: View {
             .filter { !$0.isEmpty }
             .joined(separator: ":")
         ConfigIO.save(ConfigIO.Config(interval: scanInterval, skillDirs: joined))
+    }
+
+    private func addDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = true
+        panel.prompt = "Add"
+        panel.message = "Select directories to scan for skills"
+        guard panel.runModal() == .OK else { return }
+
+        let existing = skillDirs.components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        var merged = existing
+        for url in panel.urls {
+            let path = url.path
+            if !merged.contains(path) { merged.append(path) }
+        }
+        skillDirs = merged.joined(separator: "\n")
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
