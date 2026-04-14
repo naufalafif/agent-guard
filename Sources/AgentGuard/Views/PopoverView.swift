@@ -7,6 +7,7 @@ struct PopoverView: View {
     let onScanNow: () -> Void
     let onIgnore: (String) -> Void
     let onRestore: (String) -> Void
+    let onAddSkillDir: () -> Void
     let onSettings: () -> Void
     let onQuit: () -> Void
 
@@ -189,6 +190,24 @@ struct PopoverView: View {
             .foregroundColor(state.isScanning ? .secondary : .accentColor)
             .disabled(state.isScanning)
             .pointerCursor()
+
+            Button {
+                onAddSkillDir()
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 10, weight: .semibold))
+                    Text("Add Dir")
+                        .font(.system(size: 11, weight: .medium))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+            .foregroundColor(.primary)
+            .pointerCursor()
+            .help("Add a skill directory to scan")
 
             Spacer()
 
