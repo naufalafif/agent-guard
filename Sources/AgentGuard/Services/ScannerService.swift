@@ -153,21 +153,6 @@ actor ScannerService {
         return (raw.interval, merged)
     }
 
-    /// Derive a friendly display name from a config file path.
-    private func friendlyConfigName(_ path: String) -> String {
-        let lower = path.lowercased()
-        if lower.contains("claude") { return "Claude" }
-        if lower.contains("cursor") { return "Cursor" }
-        if lower.contains("windsurf") { return "Windsurf" }
-        if lower.contains("vscode") || lower.contains("code") { return "VS Code" }
-        if lower.contains("zed") { return "Zed" }
-        if lower.contains("cline") { return "Cline" }
-        if lower.contains("continue") { return "Continue" }
-        if lower.contains("opencode") { return "OpenCode" }
-        let filename = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
-        return filename
-    }
-
     /// Read ~/.claude/plugins/installed_plugins.json and return one installPath per plugin.
     /// Prefers user-scoped installs over project-scoped to avoid scanning the same plugin twice.
     private func installedClaudePluginDirs() -> [String] {
@@ -341,14 +326,15 @@ actor ScannerService {
 
         // Read each config file to extract server names for the configs section.
         let configInfos: [SafeItem] = configs.keys.sorted().compactMap { path in
+            let name = URL(fileURLWithPath: path).lastPathComponent
             let url = URL(fileURLWithPath: path)
             guard let data = try? Data(contentsOf: url),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let mcpServers = json["mcpServers"] as? [String: Any] else {
-                return SafeItem(name: friendlyConfigName(path), detail: "")
+                return SafeItem(name: name, detail: "")
             }
             let serverList = mcpServers.keys.sorted().joined(separator: ", ")
-            return SafeItem(name: friendlyConfigName(path), detail: serverList)
+            return SafeItem(name: name, detail: serverList)
         }
 
         return MCPResult(
